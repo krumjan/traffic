@@ -1789,10 +1789,10 @@ class Flight(
             .cluster_filter(paracol="geoaltitude", groupsize=15, paradiff_big=500)
             .smoothing(paracol="geoaltitude", kernel_size=10)
             # vertical rate
-            .median_filter(paracol="vertical_rate", kernel=5)
+            .median_filter(paracol="vertical_rate", kernel=3)
             .deriv_filter(paracol="vertical_rate", th1=1500, th2=1000, window=5)
             .cluster_filter(paracol="vertical_rate", groupsize=15, paradiff_big=2000)
-            .smoothing(paracol="vertical_rate", kernel_size=3)
+            .smoothing(paracol="vertical_rate", kernel_size=5)
             # groundspeed
             .median_filter(paracol="groundspeed", kernel=9)
             .deriv_filter(paracol="groundspeed", th1=12, th2=10, window=3)
