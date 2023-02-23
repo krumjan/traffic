@@ -1781,13 +1781,17 @@ class Flight(
             # geoaltitude
             .median_filter(paracol="geoaltitude", kernel=9)
             .deriv_filter(paracol="geoaltitude", th1=200, th2=150, window=10)
-            .cluster_filter(paracol="geoaltitude", groupsize=15, paradiff_big=500)
+            .cluster_filter(
+                paracol="geoaltitude", groupsize=15, paradiff_big=500
+            )
             .smoothing(paracol="geoaltitude", kernel_size=10)
             # vertical rate
             .median_filter(paracol="vertical_rate", kernel=3)
             .deriv_filter(paracol="vertical_rate", th1=1500, th2=1000, window=5)
-            .cluster_filter(paracol="vertical_rate", groupsize=15, paradiff_big=2000)
-            .smoothing(paracol="vertical_rate", kernel_size=5)
+            .cluster_filter(
+                paracol="vertical_rate", groupsize=15, paradiff_big=2000
+            )
+            .smoothing(paracol="vertical_rate", kernel_size=3)
             # groundspeed
             .median_filter(paracol="groundspeed", kernel=9)
             .deriv_filter(paracol="groundspeed", th1=12, th2=10, window=3)
@@ -1796,13 +1800,14 @@ class Flight(
             .cluster_filter(paracol="onground", groupsize=15)
             # track
             .median_filter(paracol="track", kernel=5)
-            .deriv_filter(paracol="track", th1=12, th2=10, window=2)
-            .cluster_filter(paracol="track", groupsize=20, paradiff_big=20)
+            .deriv_filter(paracol="track", th1=15, th2=12, window=2)
             .smoothing(paracol="track", kernel_size=3)
             # latitude
             .cluster_filter(paracol="latitude", paradiff_big=0.02, groupsize=10)
             # longitude
-            .cluster_filter(paracol="longitude", paradiff_big=0.02, groupsize=10)
+            .cluster_filter(
+                paracol="longitude", paradiff_big=0.02, groupsize=10
+            )
         )
         return trajs_filt
 
@@ -1859,7 +1864,9 @@ class Flight(
             spike_delta_next = (spike_time_next - data["timestamp"]).astype(
                 "timedelta64[s]"
             )
-            in_window = (spike_delta_prev <= window) & (spike_delta_next <= window)
+            in_window = (spike_delta_prev <= window) & (
+                spike_delta_next <= window
+            )
             data.loc[(in_window == True), paracol] = np.NaN
         return self.__class__(data)
 
@@ -1941,6 +1948,60 @@ class Flight(
                 "compute_gs < compute_gs.mean() + 3 * compute_gs.std()"
             )
         return flight
+
+    def vr_alt_score(self) -> "Flight":
+        """Calculates the vr_alt_score and adds it as a new column to the underlying dataframe.
+
+        The vr_alt_score is a metric that measures the coherence of the flight's vertical rate,
+        barometric altitude and geometric altitude. The score is calculated by determining the
+        average standard deviation of the flight's vertical rate, as determined by barometric and
+        geometric altitudes, as well as the flight's actual vertical rate. The lower the score, the
+        better the coherence and the better the quality of the concerned parameters.
+        """
+        calc_window = 6
+        smooth_window = 5
+
+        data = self.data
+
+        timediff = (
+            (data["timestamp"].shift(-calc_window) - data["timestamp"])
+            .dt.total_seconds()
+            .shift(+int(calc_window / 2))
+        )
+        barodiff = (
+            data["altitude"].shift(-calc_window) - data["altitude"]
+        ).shift(+int(calc_window / 2))
+        geodiff = (
+            data["geoaltitude"].shift(-calc_window) - data["geoaltitude"]
+        ).shift(+int(calc_window / 2))
+
+        vr_baroaltitude = (
+            (((barodiff) / timediff) * 60)
+            .rolling(smooth_window, center=True)
+            .mean()
+        )
+        vr_geoaltitude = (
+            (((geodiff) / timediff) * 60)
+            .rolling(smooth_window, center=True)
+            .mean()
+        )
+
+        vr_sm = data.vertical_rate.rolling(smooth_window, center=True).mean()
+
+        vr_std = np.std(
+            pd.concat(
+                [
+                    vr_baroaltitude,
+                    vr_geoaltitude,
+                    vr_sm,
+                ],
+                axis=1,
+            ),
+            axis=1,
+        )
+
+        data["vr_alt_score"] = np.mean(vr_std)
+        return self.__class__(data)
 
     def comet(self, **kwargs: Any) -> "Flight":
         """Computes a comet for a trajectory.
