@@ -1973,9 +1973,11 @@ class Flight(
             .dt.total_seconds()
             .shift(+int(calc_window / 2))
         )
+
         barodiff = (
             data["altitude"].shift(-calc_window) - data["altitude"]
         ).shift(+int(calc_window / 2))
+
         geodiff = (
             data["geoaltitude"].shift(-calc_window) - data["geoaltitude"]
         ).shift(+int(calc_window / 2))
@@ -1985,6 +1987,7 @@ class Flight(
             .rolling(smooth_window, center=True)
             .mean()
         )
+
         vr_geoaltitude = (
             (((geodiff) / timediff) * 60)
             .rolling(smooth_window, center=True)
@@ -2005,7 +2008,9 @@ class Flight(
             axis=1,
         )
 
-        data["vr_alt_score"] = np.mean(vr_std)
+        data.insert(
+            loc=len(data.columns), column="vr_alt_score", value=np.mean(vr_std)
+        )
         return self.__class__(data)
 
     def comet(self, **kwargs: Any) -> "Flight":
