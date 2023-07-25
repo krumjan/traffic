@@ -2013,6 +2013,123 @@ class Flight(
         )
         return self.__class__(data)
 
+    def gs_pos_score(self) -> "Flight":
+        """
+        Calculates the pos_gps_score for a given flight and adds it to the underlying dataframe.
+        The pos_gps_score is a metric that measures the coherence of the flight's position and
+        groundspeed. The score is calculated by determining the average standard deviation of the
+        flight's groundspeed, as determined by position, as well as the flight's actual groundspeed.
+        The lower the score, the better the coherence and the better the quality of the concerned
+        parameters
+        as a general rule of thumb:
+            0-100       = good quality
+            100-1000    = acceptable quality
+            >1000       = bad quality
+        Parameters:
+        flight: Flight
+            The flight object for which the score will be calculated and appended.
+        calc_window: int
+            Defines the width of the window used to calculate the groundspeed. Default is 6.
+        smooth_window: int
+            Width of the window used for the moving average filter. Default is 5.
+        return_intermediate: bool
+            If set to True, additionally returns the intermediate columns used to calculate the score.
+            Default is False.
+        Returns:
+        Flight:
+            The flight object with the calculated vr_alt_score added as a column in the underlying
+            dataframe.
+        """
+
+        # Extract the underlying dataframe
+        # self.distance()
+        data = self.data
+
+        calc_window = 6
+        smooth_window = 5
+
+        # Determine timedelta between consecutive datapoints
+        data["timedelta"] = (
+            data["timestamp"].shift(-1) - data["timestamp"]
+        ).dt.total_seconds()
+
+        # Determine great-circle distance between consecutive datapoints
+        data["dist"] = (
+            1000
+            * 6367
+            * 2
+            * np.arcsin(
+                np.sqrt(
+                    np.sin(
+                        (
+                            np.radians(data["latitude"].shift(-1))
+                            - np.radians(data["latitude"])
+                        )
+                        / 2
+                    )
+                    ** 2
+                    + np.cos(np.radians(data["latitude"]))
+                    * np.cos(np.radians(data["latitude"].shift(-1)))
+                    * np.sin(
+                        (
+                            np.radians(data["longitude"].shift(-1))
+                            - np.radians(data["longitude"])
+                        )
+                        / 2
+                    )
+                    ** 2
+                )
+            )
+        )
+
+        # Sum distances and time deltas over the given window.
+        data["dist_sum"] = data["dist"].rolling(calc_window).sum()
+        data["timedelta_sum"] = data["timedelta"].rolling(calc_window).sum()
+
+        # Based on summed values, the groundspeed is calculated. The groundspeed is then shifted by half
+        # the window to the left
+        data["gsp"] = (data["dist_sum"] / data["timedelta_sum"]).shift(
+            +int(calc_window / 2)
+        )
+
+        # Conversion from m/s to knots
+        data["gsp_kts"] = data["gsp"] * 1.94384
+
+        # Apply a moving average filter to the calculated and actual groundspeed
+        data["gsp_kts_sm"] = data.gsp_kts.rolling(
+            smooth_window, center=True
+        ).mean()
+        data["groundspeed_sm"] = data.groundspeed.rolling(
+            smooth_window, center=True
+        ).mean()
+
+        # Get the standard deviation between the calculated groundspeed and the actual groundspeed
+        data["gs_pos_sd"] = np.std(
+            data[["gsp_kts_sm", "groundspeed_sm"]], axis=1
+        )
+
+        # Add the mean of the standard deviation to the flight object
+        data["gs_pos_score"] = np.mean(data["gs_pos_sd"])
+
+        # Drop the intermediate columns
+        data = data.drop(
+            [
+                "timedelta",
+                "dist",
+                "dist_sum",
+                "timedelta_sum",
+                "gsp",
+                "gsp_kts",
+                "gsp_kts_sm",
+                "groundspeed_sm",
+                "gs_pos_sd",
+            ],
+            axis=1,
+        )
+
+        # Return as a Flight object
+        return self.__class__(data)
+
     def comet(self, **kwargs: Any) -> "Flight":
         """Computes a comet for a trajectory.
 

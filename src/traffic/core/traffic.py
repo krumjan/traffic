@@ -617,6 +617,10 @@ class Traffic(HBoxMixin, GeographyMixin):
         ...
 
     @lazy_evaluation()
+    def gs_pos_score(self):
+        ...
+
+    @lazy_evaluation()
     def unwrap(  # type: ignore
         self, features: Union[None, str, List[str]] = None
     ):
